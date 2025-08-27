@@ -1,9 +1,7 @@
+from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
-    path("api/", include("classifier.urls")),
-]from django.urls import path, include
-
-urlpatterns = [
+    path("admin/", admin.site.urls),
     path("api/", include("classifier.urls")),
 ]

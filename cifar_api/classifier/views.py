@@ -1,25 +1,52 @@
-import tensorflow as tf
 import numpy as np
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from tensorflow.keras.models import load_model
 from PIL import Image
 
-# Load model once
-model = tf.keras.models.load_model("cifar10_cnn_model.h5")
-class_names = ["airplane", "automobile", "bird", "cat", "deer", "dog", "frog", "horse", "ship", "truck"]
+# Load model once when the server starts
+# Assumes cifar10_cnn_model.h5 is in the SAME folder as manage.py
+model = load_model("cifar10_cnn_model.h5")
 
-def preprocess_image(image_file):
-    img = Image.open(image_file).resize((32,32))
-    img_array = np.array(img) / 255.0
-    img_array = img_array.reshape(1,32,32,3)
-    return img_array
+# CIFAR-10 class labels
+CLASS_NAMES = [
+    "airplane", "automobile", "bird", "cat", "deer",
+    "dog", "frog", "horse", "ship", "truck"
+]
 
-@api_view(["POST"])
+@csrf_exempt
 def predict(request):
-    if "image" not in request.FILES:
-        return Response({"error": "No image provided"}, status=400)
+    if request.method == "POST":
+        if "file" not in request.FILES:
+            return JsonResponse({"error": "No file uploaded"}, status=400)
 
-    img_array = preprocess_image(request.FILES["image"])
-    prediction = model.predict(img_array)
-    predicted_class = class_names[np.argmax(prediction)]
-    return Response({"prediction": predicted_class})
+        try:
+            # Read the uploaded image
+            file = request.FILES["file"]
+            image = Image.open(file)
+
+            # Convert to RGB
+            image = image.convert("RGB")
+
+            # Resize to CIFAR-10 input size
+            image = image.resize((32, 32))
+
+            # Convert to numpy and normalize
+            img_array = np.array(image) / 255.0
+            img_array = np.expand_dims(img_array, axis=0)  # (1, 32, 32, 3)
+
+            # Predict
+            predictions = model.predict(img_array)
+            class_index = int(np.argmax(predictions[0]))
+            confidence = float(np.max(predictions[0]))
+
+            return JsonResponse({
+                "filename": file.name,
+                "predicted_class": CLASS_NAMES[class_index],
+                "confidence": round(confidence, 4)
+            })
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)
